@@ -491,7 +491,7 @@ function makePetAvatar(image) {
 }
 
 function cartoonizeSourceImage(image) {
-  const smallSize = 360;
+  const smallSize = 300;
   const outSize = 720;
   const small = document.createElement("canvas");
   small.width = smallSize;
@@ -499,25 +499,30 @@ function cartoonizeSourceImage(image) {
   const sctx = small.getContext("2d", { willReadFrequently: true });
   const crop = coverCrop(image.naturalWidth, image.naturalHeight, smallSize, smallSize);
   sctx.imageSmoothingEnabled = true;
-  sctx.filter = "saturate(1.14) contrast(1.02) brightness(1.04)";
+  sctx.filter = "saturate(1.32) contrast(1.08) brightness(1.08)";
   sctx.drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, smallSize, smallSize);
   sctx.filter = "none";
 
   const source = sctx.getImageData(0, 0, smallSize, smallSize);
   const data = source.data;
-  const painted = new Uint8ClampedArray(data);
+  const painted = new Uint8ClampedArray(data.length);
   const lumas = new Float32Array(smallSize * smallSize);
+  const darkSpots = [];
 
-  for (let y = 1; y < smallSize - 1; y++) {
-    for (let x = 1; x < smallSize - 1; x++) {
+  for (let y = 0; y < smallSize; y++) {
+    for (let x = 0; x < smallSize; x++) {
       const i = (y * smallSize + x) * 4;
-      const avg = averageNeighborhood(data, smallSize, x, y);
-      const soft = softenIllustrationColor(avg);
+      const avg = averageNeighborhood(data, smallSize, x, y, 2);
+      const soft = posterizeAnimeColor(avg);
       painted[i] = soft[0];
       painted[i + 1] = soft[1];
       painted[i + 2] = soft[2];
       painted[i + 3] = 255;
-      lumas[y * smallSize + x] = (soft[0] * 0.299 + soft[1] * 0.587 + soft[2] * 0.114) / 255;
+      const luma = (soft[0] * 0.299 + soft[1] * 0.587 + soft[2] * 0.114) / 255;
+      lumas[y * smallSize + x] = luma;
+      if (y > smallSize * 0.26 && y < smallSize * 0.58 && x > smallSize * 0.16 && x < smallSize * 0.84 && luma < 0.24) {
+        darkSpots.push({ x, y, luma });
+      }
     }
   }
 
@@ -529,10 +534,12 @@ function cartoonizeSourceImage(image) {
       const gx = lumas[y * smallSize + x + 1] - lumas[y * smallSize + x - 1];
       const gy = lumas[(y + 1) * smallSize + x] - lumas[(y - 1) * smallSize + x];
       const edge = Math.sqrt(gx * gx + gy * gy);
-      if (edge > 0.18) {
-        output.data[i] = output.data[i] * 0.72 + 32 * 0.28;
-        output.data[i + 1] = output.data[i + 1] * 0.72 + 38 * 0.28;
-        output.data[i + 2] = output.data[i + 2] * 0.72 + 46 * 0.28;
+      const centerMask = Math.abs(x - smallSize / 2) < smallSize * 0.42 && y > smallSize * 0.16 && y < smallSize * 0.84;
+      if (edge > 0.075 && centerMask) {
+        const ink = clamp((edge - 0.075) * 6);
+        output.data[i] = output.data[i] * (1 - ink) + 28 * ink;
+        output.data[i + 1] = output.data[i + 1] * (1 - ink) + 31 * ink;
+        output.data[i + 2] = output.data[i + 2] * (1 - ink) + 38 * ink;
       }
     }
   }
@@ -546,28 +553,28 @@ function cartoonizeSourceImage(image) {
   bctx.fillStyle = "#fffdf7";
   bctx.fillRect(0, 0, outSize, outSize);
   bctx.imageSmoothingEnabled = true;
-  bctx.filter = "blur(7px) saturate(1.08)";
+  bctx.filter = "blur(5px) saturate(1.18) contrast(1.04)";
   bctx.drawImage(small, 0, 0, outSize, outSize);
   bctx.filter = "none";
-  bctx.globalAlpha = 0.82;
+  bctx.globalAlpha = 0.9;
   bctx.drawImage(small, 0, 0, outSize, outSize);
-  bctx.globalAlpha = 0.16;
-  bctx.fillStyle = "#fff8e8";
-  bctx.fillRect(0, 0, outSize, outSize);
   bctx.globalAlpha = 1;
+  drawAnimeFaceDetails(bctx, darkSpots, smallSize, outSize);
   drawSoftVignette(bctx, outSize);
 
   return big;
 }
 
-function averageNeighborhood(data, size, x, y) {
+function averageNeighborhood(data, size, x, y, radius = 1) {
   let r = 0;
   let g = 0;
   let b = 0;
   let count = 0;
-  for (let oy = -1; oy <= 1; oy++) {
-    for (let ox = -1; ox <= 1; ox++) {
-      const i = ((y + oy) * size + x + ox) * 4;
+  for (let oy = -radius; oy <= radius; oy++) {
+    for (let ox = -radius; ox <= radius; ox++) {
+      const px = clampTo(x + ox, 0, size - 1);
+      const py = clampTo(y + oy, 0, size - 1);
+      const i = (py * size + px) * 4;
       r += data[i];
       g += data[i + 1];
       b += data[i + 2];
@@ -577,12 +584,72 @@ function averageNeighborhood(data, size, x, y) {
   return [r / count, g / count, b / count];
 }
 
-function softenIllustrationColor(color) {
-  return color.map((value) => {
-    const normalized = value / 255;
-    const lifted = Math.pow(normalized, 0.94) * 255;
-    return clampTo(lifted * 0.92 + 245 * 0.08, 0, 255);
-  });
+function posterizeAnimeColor(color) {
+  const hsl = rgbToHsl(color[0], color[1], color[2]);
+  const levels = hsl.l < 0.18 ? 7 : 5;
+  hsl.s = clamp(hsl.s * 1.36 + 0.08);
+  hsl.l = clamp(Math.round((hsl.l * 0.9 + 0.08) * levels) / levels);
+  const rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
+  return rgb.map((value) => clampTo(value * 0.92 + 255 * 0.08, 0, 255));
+}
+
+function drawAnimeFaceDetails(ctx, darkSpots, sourceSize, outSize) {
+  const eyes = findEyeCenters(darkSpots, sourceSize);
+  if (eyes.length) {
+    for (const eye of eyes) {
+      const x = eye.x / sourceSize * outSize;
+      const y = eye.y / sourceSize * outSize;
+      const radius = outSize * 0.032;
+      ctx.save();
+      ctx.fillStyle = "rgba(18, 20, 27, 0.5)";
+      ctx.beginPath();
+      ctx.ellipse(x, y, radius * 1.18, radius * 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+      ctx.beginPath();
+      ctx.arc(x + radius * 0.35, y - radius * 0.35, radius * 0.26, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.fillStyle = "rgba(255, 132, 145, 0.2)";
+  const cheekY = outSize * 0.58;
+  ctx.beginPath();
+  ctx.ellipse(outSize * 0.32, cheekY, outSize * 0.07, outSize * 0.028, -0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(outSize * 0.68, cheekY, outSize * 0.07, outSize * 0.028, 0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function findEyeCenters(spots, size) {
+  const halves = [
+    spots.filter((spot) => spot.x < size / 2),
+    spots.filter((spot) => spot.x >= size / 2),
+  ];
+  return halves
+    .map((items) => {
+      if (!items.length) return null;
+      const weighted = items.reduce(
+        (sum, item) => {
+          const weight = 1 - item.luma;
+          sum.x += item.x * weight;
+          sum.y += item.y * weight;
+          sum.weight += weight;
+          return sum;
+        },
+        { x: 0, y: 0, weight: 0 },
+      );
+      return {
+        x: weighted.x / weighted.weight,
+        y: weighted.y / weighted.weight,
+      };
+    })
+    .filter(Boolean);
 }
 
 function drawSoftVignette(ctx, size) {
@@ -773,6 +840,28 @@ function rgbToHsl(r, g, b) {
     h /= 6;
   }
   return { h, s, l };
+}
+
+function hslToRgb(h, s, l) {
+  if (s === 0) {
+    const value = l * 255;
+    return [value, value, value];
+  }
+  const hueToRgb = (p, q, t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [
+    hueToRgb(p, q, h + 1 / 3) * 255,
+    hueToRgb(p, q, h) * 255,
+    hueToRgb(p, q, h - 1 / 3) * 255,
+  ];
 }
 
 function loadImage(file) {
