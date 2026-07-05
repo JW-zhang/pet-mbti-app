@@ -1459,9 +1459,7 @@ async function drawQrBlock(ctx, x, y, size) {
 }
 
 function getQrTargetUrl() {
-  const { hostname, href } = window.location;
-  const isLocal = ["127.0.0.1", "localhost", "0.0.0.0"].includes(hostname);
-  return isLocal ? PUBLIC_SITE_URL : href.split("#")[0];
+  return PUBLIC_SITE_URL;
 }
 
 function drawFallbackQr(ctx, x, y, size) {
