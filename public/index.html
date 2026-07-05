@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Petsona MBTI</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar" aria-label="应用状态">
+        <div>
+          <p class="eyebrow">Petsona MBTI</p>
+          <h1>宠物人格海报生成器</h1>
+        </div>
+        <div class="model-pill" id="modelStatus">模型准备中</div>
+      </section>
+
+      <section class="workspace">
+        <div class="upload-panel">
+          <label class="dropzone" id="dropzone">
+            <input id="fileInput" type="file" accept="image/*" />
+            <span class="upload-icon" aria-hidden="true">+</span>
+            <span class="upload-title">选择宠物照片</span>
+            <span class="upload-meta">JPG / PNG / WebP</span>
+          </label>
+
+          <div class="preview-wrap" id="previewWrap" hidden>
+            <img id="previewImage" alt="已上传图片预览" />
+          </div>
+
+          <div class="action-row">
+            <button class="primary" id="analyzeBtn" type="button" disabled>开始识别</button>
+            <button class="ghost" id="demoBtn" type="button">样张</button>
+            <button class="ghost" id="resetBtn" type="button" disabled>重置</button>
+          </div>
+        </div>
+
+        <div class="result-panel" id="resultPanel">
+          <div class="empty-state" id="emptyState">
+            <span class="empty-mark">MBTI</span>
+          </div>
+
+          <div class="rejected-state" id="rejectedState" hidden>
+            <h2>未识别到宠物</h2>
+            <p id="rejectReason">请换一张脸部更清晰的猫、狗或其他宠物照片。</p>
+          </div>
+
+          <div class="analysis-state" id="analysisState" hidden>
+            <div class="poster-frame">
+              <canvas id="posterCanvas" width="1080" height="1350" aria-label="Q版宠物MBTI海报"></canvas>
+            </div>
+
+            <div class="readout">
+              <div class="type-block">
+                <span class="type-label">MBTI</span>
+                <strong id="mbtiType">ENFP</strong>
+                <span id="mbtiName">小太阳探险家</span>
+              </div>
+              <div class="confidence">
+                <span>宠物置信度</span>
+                <meter id="petMeter" min="0" max="1" value="0"></meter>
+                <b id="petScore">0%</b>
+              </div>
+              <div class="trait-grid" id="traitGrid"></div>
+              <div class="copy-box" id="mbtiCopy"></div>
+              <button class="primary download" id="downloadBtn" type="button">下载海报</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
