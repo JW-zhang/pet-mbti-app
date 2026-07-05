@@ -63,6 +63,8 @@ const POSTER_THEME = {
   accent2: "#79bda8",
 };
 
+const PUBLIC_SITE_URL = "https://jw-zhang.github.io/pet-mbti-app/";
+
 const els = {
   fileInput: document.querySelector("#fileInput"),
   dropzone: document.querySelector("#dropzone"),
@@ -653,7 +655,7 @@ async function drawQrBlock(ctx, x, y, size) {
   qrCanvas.width = size;
   qrCanvas.height = size;
   if (window.QRCode?.toCanvas) {
-    await window.QRCode.toCanvas(qrCanvas, "敬请期待！", {
+    await window.QRCode.toCanvas(qrCanvas, getQrTargetUrl(), {
       width: size,
       margin: 1,
       color: { dark: POSTER_THEME.ink, light: "#ffffff" },
@@ -669,6 +671,12 @@ async function drawQrBlock(ctx, x, y, size) {
   ctx.font = "900 22px system-ui, sans-serif";
   ctx.fillText("扫码查看", x + size / 2, y + size + 36);
   ctx.restore();
+}
+
+function getQrTargetUrl() {
+  const { hostname, href } = window.location;
+  const isLocal = ["127.0.0.1", "localhost", "0.0.0.0"].includes(hostname);
+  return isLocal ? PUBLIC_SITE_URL : href.split("#")[0];
 }
 
 function drawFallbackQr(ctx, x, y, size) {
