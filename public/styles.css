@@ -370,6 +370,29 @@ h1 {
   line-height: 1.35;
 }
 
+.reason-box {
+  padding: 12px;
+  border: 1px solid rgba(121, 189, 168, 0.55);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(121, 189, 168, 0.14), rgba(236, 115, 87, 0.08)),
+    #fff;
+  color: #33404c;
+  line-height: 1.55;
+}
+
+.reason-box span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.reason-box p {
+  margin: 0;
+}
+
 .copy-box {
   padding: 12px;
   border-left: 4px solid var(--mint);

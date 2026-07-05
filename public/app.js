@@ -103,6 +103,7 @@ const els = {
   petMeter: document.querySelector("#petMeter"),
   petScore: document.querySelector("#petScore"),
   traitGrid: document.querySelector("#traitGrid"),
+  reasonBox: document.querySelector("#reasonBox"),
   mbtiCopy: document.querySelector("#mbtiCopy"),
   downloadBtn: document.querySelector("#downloadBtn"),
 };
@@ -443,8 +444,101 @@ async function renderResult(image, analysis, animeImage = null) {
       return `<div class="trait"><span>${trait}</span><b>${title}</b><small>${desc}</small></div>`;
     })
     .join("");
+  els.reasonBox.innerHTML = buildReasonHtml(analysis);
   els.mbtiCopy.textContent = analysis.copy;
   await drawPoster(image, analysis, animeImage);
+}
+
+function buildReasonHtml(analysis) {
+  const reasons = [
+    explainAxis(analysis.traits[0], {
+      E: [
+        analysis.eyeScore,
+        "眼睛区域更明显",
+        analysis.brightness,
+        "画面亮度更高",
+        analysis.saturation,
+        "色彩更活跃",
+      ],
+      I: [
+        1 - analysis.eyeScore,
+        "神态更收敛",
+        1 - analysis.brightness,
+        "画面明度偏低",
+        1 - analysis.saturation,
+        "颜色更安静",
+      ],
+    }),
+    explainAxis(analysis.traits[1], {
+      S: [
+        1 - analysis.texture,
+        "轮廓和纹理更稳定",
+        analysis.symmetry,
+        "左右结构更规整",
+        analysis.centerFocus,
+        "主体集中度更高",
+      ],
+      N: [
+        analysis.texture,
+        "毛发和边缘变化更丰富",
+        analysis.contrast,
+        "明暗对比更有戏剧感",
+        analysis.centerFocus,
+        "面部焦点更突出",
+      ],
+    }),
+    explainAxis(analysis.traits[2], {
+      F: [
+        analysis.roundness,
+        "脸部圆润感更强",
+        analysis.warmth,
+        "整体色调更温暖",
+        1 - analysis.contrast,
+        "视觉攻击性较低",
+      ],
+      T: [
+        analysis.contrast,
+        "明暗边界更清晰",
+        1 - analysis.roundness,
+        "轮廓更利落",
+        1 - analysis.warmth,
+        "色调更冷静",
+      ],
+    }),
+    explainAxis(analysis.traits[3], {
+      J: [
+        analysis.symmetry,
+        "面部对称度更高",
+        analysis.centerFocus,
+        "主体位置更集中",
+        1 - analysis.texture,
+        "纹理节奏更稳定",
+      ],
+      P: [
+        analysis.texture,
+        "动态纹理更多",
+        1 - analysis.symmetry,
+        "左右差异更明显",
+        1 - analysis.centerFocus,
+        "画面更随性",
+      ],
+    }),
+  ];
+  return `
+    <span>判定依据</span>
+    <p>${reasons.join("；")}。</p>
+  `;
+}
+
+function explainAxis(trait, options) {
+  const items = options[trait];
+  const pairs = [
+    { score: items[0], text: items[1] },
+    { score: items[2], text: items[3] },
+    { score: items[4], text: items[5] },
+  ];
+  pairs.sort((a, b) => b.score - a.score);
+  return `${trait}：${pairs.slice(0, 2).map((item) => item.text).join("、")}`;
 }
 
 async function drawPoster(image, analysis, animeImage = null) {
