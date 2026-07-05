@@ -65,6 +65,25 @@ const POSTER_THEME = {
 
 const PUBLIC_SITE_URL = "https://jw-zhang.github.io/pet-mbti-app/";
 
+const MBTI_ELEMENTS = {
+  ISTJ: { symbol: "shield", name: "秩序晶盾", color: "#4667ff" },
+  ISFJ: { symbol: "heartShield", name: "守护暖心", color: "#f07193" },
+  INFJ: { symbol: "moon", name: "洞察月相", color: "#7c5cff" },
+  INTJ: { symbol: "diamond", name: "策略棱镜", color: "#263a8b" },
+  ISTP: { symbol: "gear", name: "机械星环", color: "#388697" },
+  ISFP: { symbol: "flower", name: "柔光花火", color: "#ff8f70" },
+  INFP: { symbol: "cloud", name: "梦境云核", color: "#86a8ff" },
+  INTP: { symbol: "atom", name: "逻辑星轨", color: "#4f9de8" },
+  ESTP: { symbol: "bolt", name: "闪电动能", color: "#ffb000" },
+  ESFP: { symbol: "star", name: "舞台星芒", color: "#ff5fb8" },
+  ENFP: { symbol: "sun", name: "灵感太阳", color: "#ff7a30" },
+  ENTP: { symbol: "spark", name: "奇点火花", color: "#00a6ff" },
+  ESTJ: { symbol: "crown", name: "指挥王冠", color: "#c78b24" },
+  ESFJ: { symbol: "hands", name: "社交连结", color: "#36b37e" },
+  ENFJ: { symbol: "flame", name: "暖场焰心", color: "#f05252" },
+  ENTJ: { symbol: "arrow", name: "领航箭矢", color: "#5b21b6" },
+};
+
 const els = {
   fileInput: document.querySelector("#fileInput"),
   dropzone: document.querySelector("#dropzone"),
@@ -130,9 +149,9 @@ els.analyzeBtn.addEventListener("click", async () => {
       showRejected(analysis);
       return;
     }
-    els.analyzeBtn.textContent = "生成动漫形象中";
-    const animeImage = await generateAiAnimePetImage(image, analysis);
-    await renderResult(image, analysis, animeImage);
+    els.analyzeBtn.textContent = "匹配Q版形象中";
+    const mascotImage = makeBuiltInMascotImage(image, analysis);
+    await renderResult(image, analysis, mascotImage);
   } finally {
     els.analyzeBtn.disabled = false;
     els.analyzeBtn.textContent = "开始识别";
@@ -444,7 +463,7 @@ async function drawPoster(image, analysis, animeImage = null) {
 
   drawPattern(ctx, w, h, accent);
   drawPosterPanel(ctx, w, h, accent);
-  drawStylizedPet(ctx, w, image, animeImage);
+  drawStylizedPet(ctx, w, image, animeImage, analysis);
   await drawPosterText(ctx, w, h, accent, analysis);
 }
 
@@ -461,7 +480,7 @@ function drawPosterPanel(ctx, w, h, accent) {
   ctx.restore();
 }
 
-function drawStylizedPet(ctx, w, image, animeImage = null) {
+function drawStylizedPet(ctx, w, image, animeImage = null, analysis = null) {
   const avatar = animeImage || makePetAvatar(image);
   ctx.save();
   const x = 138;
@@ -479,6 +498,7 @@ function drawStylizedPet(ctx, w, image, animeImage = null) {
   ctx.clip();
   ctx.drawImage(avatar, x, y, size, size);
   ctx.restore();
+  if (analysis) drawMbtiElementBadge(ctx, x + size - 184, y + size - 184, 154, analysis);
 }
 
 function makePetAvatar(image) {
@@ -492,40 +512,606 @@ function makePetAvatar(image) {
   return avatar;
 }
 
-async function generateAiAnimePetImage(image, analysis) {
-  try {
-    const response = await fetch("./api/anime-pet", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image: makeApiReferenceImage(image),
-        mbti: analysis.type,
-        name: analysis.name,
-      }),
-    });
-    if (!response.ok) return null;
-    const payload = await response.json();
-    if (!payload.image) return null;
-    return await loadDataUrlImage(`data:image/png;base64,${payload.image}`);
-  } catch (error) {
-    console.warn("AI anime pet generation unavailable, using local fallback.", error);
-    return null;
-  }
-}
-
-function makeApiReferenceImage(image) {
-  const size = 1024;
+function makeBuiltInMascotImage(image, analysis) {
+  const size = 720;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d");
+  const palette = extractPetPalette(image, analysis);
+  const category = selectPetCategory(analysis);
+  drawMascotBackdrop(ctx, size, palette, analysis);
+  drawPetMascot(ctx, category, palette, analysis, size);
+  drawMascotShine(ctx, size);
+  return canvas;
+}
+
+function selectPetCategory(analysis) {
+  const name = (analysis.petClass || "").toLowerCase();
+  if (name.includes("rabbit")) return "rabbit";
+  if (name.includes("hamster") || name.includes("guinea")) return "hamster";
+  if (name.includes("turtle")) return "turtle";
+  if (name.includes("goldfish") || name.includes("fish")) return "fish";
+  if (name.includes("bird") || name.includes("parrot")) return "bird";
+  if (name.includes("dog") || name.includes("retriever") || name.includes("poodle") || name.includes("terrier") || name.includes("pug") || name.includes("husky")) return "dog";
+  if (name.includes("cat") || name.includes("tabby") || name.includes("persian") || name.includes("siamese")) return "cat";
+  if (analysis.roundness > 0.68) return "hamster";
+  return analysis.traits?.includes("E") ? "dog" : "cat";
+}
+
+function extractPetPalette(image, analysis) {
+  const size = 96;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const crop = coverCrop(image.naturalWidth, image.naturalHeight, size, size);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, size, size);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, size, size);
-  return canvas.toDataURL("image/png");
+  const { data } = ctx.getImageData(0, 0, size, size);
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let weightTotal = 0;
+  for (let y = 8; y < size - 8; y += 2) {
+    for (let x = 8; x < size - 8; x += 2) {
+      const i = (y * size + x) * 4;
+      const hsl = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+      const weight = 0.4 + hsl.s * 1.4 + (1 - Math.abs(hsl.l - 0.52)) * 0.8;
+      r += data[i] * weight;
+      g += data[i + 1] * weight;
+      b += data[i + 2] * weight;
+      weightTotal += weight;
+    }
+  }
+  const base = [r / weightTotal, g / weightTotal, b / weightTotal];
+  const baseHsl = rgbToHsl(base[0], base[1], base[2]);
+  const element = MBTI_ELEMENTS[analysis.type] || MBTI_ELEMENTS.ENFP;
+  const elementHsl = hexToHsl(element.color);
+  const hue = baseHsl.s < 0.08 ? elementHsl.h : baseHsl.h;
+  const sat = clamp(baseHsl.s * 1.4 + 0.18);
+  const light = clamp(baseHsl.l * 0.7 + 0.24);
+  return {
+    fur: rgbString(hslToRgb(hue, sat, clamp(light + 0.08))),
+    shade: rgbString(hslToRgb(hue, sat, clamp(light - 0.12))),
+    dark: rgbString(hslToRgb(hue, clamp(sat + 0.08), clamp(light - 0.28))),
+    light: rgbString(hslToRgb(hue, clamp(sat - 0.05), clamp(light + 0.24))),
+    accent: element.color,
+    glow: rgbString(hslToRgb(elementHsl.h, 0.86, 0.64)),
+    ink: "#1d2230",
+    cheek: analysis.traits?.includes("F") ? "#ff85a2" : "#ffb36c",
+  };
+}
+
+function drawMascotBackdrop(ctx, size, palette, analysis) {
+  const element = MBTI_ELEMENTS[analysis.type] || MBTI_ELEMENTS.ENFP;
+  const gradient = ctx.createLinearGradient(0, 0, size, size);
+  gradient.addColorStop(0, "#101827");
+  gradient.addColorStop(0.48, "#283147");
+  gradient.addColorStop(1, palette.dark);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.strokeStyle = element.color;
+  ctx.lineWidth = 7;
+  for (let i = 0; i < 5; i++) {
+    ctx.globalAlpha = 0.12 + i * 0.035;
+    ctx.beginPath();
+    ctx.ellipse(size / 2, size / 2 + 26, 150 + i * 58, 88 + i * 36, -0.28, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.26;
+  ctx.fillStyle = palette.glow;
+  for (let i = 0; i < 24; i++) {
+    const x = (i * 109 + analysis.type.charCodeAt(i % analysis.type.length) * 13) % size;
+    const y = (i * 151 + analysis.type.charCodeAt((i + 1) % analysis.type.length) * 17) % size;
+    drawSpark(ctx, x, y, 7 + (i % 4) * 4);
+  }
+  ctx.restore();
+}
+
+function drawPetMascot(ctx, category, palette, analysis, size) {
+  ctx.save();
+  ctx.translate(size / 2, size / 2 + 34);
+  drawNeonShadow(ctx, palette);
+  if (category === "dog") drawDogMascot(ctx, palette, analysis);
+  else if (category === "bird") drawBirdMascot(ctx, palette, analysis);
+  else if (category === "rabbit") drawRabbitMascot(ctx, palette, analysis);
+  else if (category === "hamster") drawHamsterMascot(ctx, palette, analysis);
+  else if (category === "turtle") drawTurtleMascot(ctx, palette, analysis);
+  else if (category === "fish") drawFishMascot(ctx, palette, analysis);
+  else drawCatMascot(ctx, palette, analysis);
+  ctx.restore();
+}
+
+function drawNeonShadow(ctx, palette) {
+  ctx.save();
+  ctx.globalAlpha = 0.65;
+  ctx.shadowColor = palette.glow;
+  ctx.shadowBlur = 34;
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  ctx.beginPath();
+  ctx.ellipse(0, 224, 210, 42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawCatMascot(ctx, p, analysis) {
+  drawBodyBlob(ctx, p, 0, 116, 244, 210);
+  drawTriangle(ctx, -142, -92, -82, -260, -16, -86, p.fur, p.ink, 12);
+  drawTriangle(ctx, 142, -92, 82, -260, 16, -86, p.fur, p.ink, 12);
+  drawTriangle(ctx, -111, -107, -82, -202, -45, -98, p.light, p.ink, 0);
+  drawTriangle(ctx, 111, -107, 82, -202, 45, -98, p.light, p.ink, 0);
+  drawHeadBlob(ctx, p, 0, -36, 308, 270);
+  drawFaceMarkings(ctx, p, analysis, "cat");
+  drawMascotEyes(ctx, -76, -54, 76, -54, 34, p);
+  drawNoseMouth(ctx, p, 0, 14, "cat");
+  drawWhiskers(ctx, p);
+}
+
+function drawDogMascot(ctx, p, analysis) {
+  drawBodyBlob(ctx, p, 0, 122, 260, 210);
+  drawFloppyEar(ctx, -126, -84, -104, 148, p, -0.16);
+  drawFloppyEar(ctx, 126, -84, 104, 148, p, 0.16);
+  drawHeadBlob(ctx, p, 0, -22, 324, 270);
+  drawFaceMarkings(ctx, p, analysis, "dog");
+  drawMascotEyes(ctx, -78, -44, 78, -44, 32, p);
+  drawMuzzle(ctx, p, 0, 24, 116, 82);
+  drawNoseMouth(ctx, p, 0, 18, "dog");
+}
+
+function drawBirdMascot(ctx, p, analysis) {
+  drawBodyBlob(ctx, p, 0, 44, 278, 330);
+  drawWing(ctx, -118, 40, p, -1);
+  drawWing(ctx, 118, 40, p, 1);
+  drawFeatherCrest(ctx, p);
+  drawMascotEyes(ctx, -58, -74, 58, -74, 30, p);
+  drawBeak(ctx, p, 0, -26);
+  drawCheeks(ctx, p, -82, -20, 82, -20);
+}
+
+function drawRabbitMascot(ctx, p, analysis) {
+  drawRabbitEar(ctx, -74, -204, p, -0.15);
+  drawRabbitEar(ctx, 74, -204, p, 0.15);
+  drawBodyBlob(ctx, p, 0, 120, 236, 208);
+  drawHeadBlob(ctx, p, 0, -36, 300, 270);
+  drawFaceMarkings(ctx, p, analysis, "rabbit");
+  drawMascotEyes(ctx, -72, -58, 72, -58, 32, p);
+  drawNoseMouth(ctx, p, 0, 8, "rabbit");
+}
+
+function drawHamsterMascot(ctx, p, analysis) {
+  drawRoundEar(ctx, -112, -122, 68, p);
+  drawRoundEar(ctx, 112, -122, 68, p);
+  drawBodyBlob(ctx, p, 0, 118, 244, 210);
+  drawHeadBlob(ctx, p, 0, -24, 326, 296);
+  drawCheeks(ctx, p, -96, 16, 96, 16);
+  drawMascotEyes(ctx, -72, -58, 72, -58, 31, p);
+  drawNoseMouth(ctx, p, 0, 16, "hamster");
+}
+
+function drawTurtleMascot(ctx, p, analysis) {
+  drawBodyBlob(ctx, p, 0, 88, 330, 246);
+  ctx.save();
+  ctx.fillStyle = p.dark;
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.ellipse(0, 72, 178, 138, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = p.light;
+  ctx.lineWidth = 8;
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * 42, -48);
+    ctx.lineTo(i * 58, 180);
+    ctx.stroke();
+  }
+  ctx.restore();
+  drawHeadBlob(ctx, p, 0, -112, 210, 188);
+  drawMascotEyes(ctx, -44, -136, 44, -136, 24, p);
+  drawNoseMouth(ctx, p, 0, -94, "turtle");
+}
+
+function drawFishMascot(ctx, p, analysis) {
+  drawTriangle(ctx, 168, 20, 292, -78, 292, 116, p.shade, p.ink, 12);
+  drawBodyBlob(ctx, p, -16, 20, 342, 220);
+  drawWing(ctx, -40, 112, p, 1);
+  drawMascotEyes(ctx, -92, -18, 28, -22, 28, p);
+  drawNoseMouth(ctx, p, -34, 42, "fish");
+}
+
+function drawBodyBlob(ctx, p, x, y, w, h) {
+  ctx.save();
+  ctx.fillStyle = p.fur;
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = p.light;
+  ctx.beginPath();
+  ctx.ellipse(x - w * 0.16, y - h * 0.18, w * 0.22, h * 0.18, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHeadBlob(ctx, p, x, y, w, h) {
+  ctx.save();
+  ctx.shadowColor = p.glow;
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = p.fur;
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 13;
+  ctx.beginPath();
+  ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFaceMarkings(ctx, p, analysis, category) {
+  ctx.save();
+  ctx.globalAlpha = 0.42;
+  ctx.fillStyle = analysis.texture > 0.54 ? p.dark : p.light;
+  if (category === "cat" || category === "rabbit") {
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.ellipse(i * 44, -112 + Math.abs(i) * 8, 16, 56, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (category === "dog") {
+    ctx.beginPath();
+    ctx.ellipse(-88, -62, 58, 76, -0.18, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawMascotEyes(ctx, lx, ly, rx, ry, radius, p) {
+  for (const [x, y] of [[lx, ly], [rx, ry]]) {
+    ctx.save();
+    ctx.fillStyle = "#111722";
+    ctx.strokeStyle = p.ink;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.ellipse(x, y, radius * 0.86, radius * 1.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = p.glow;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.arc(x - radius * 0.18, y + radius * 0.2, radius * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(x + radius * 0.26, y - radius * 0.34, radius * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawNoseMouth(ctx, p, x, y, mode) {
+  ctx.save();
+  ctx.strokeStyle = p.ink;
+  ctx.fillStyle = mode === "fish" ? p.light : "#151923";
+  ctx.lineWidth = 8;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.ellipse(x, y, mode === "fish" ? 26 : 20, mode === "fish" ? 10 : 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (mode !== "fish") {
+    ctx.beginPath();
+    ctx.moveTo(x, y + 18);
+    ctx.quadraticCurveTo(x - 28, y + 46, x - 58, y + 28);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y + 18);
+    ctx.quadraticCurveTo(x + 28, y + 46, x + 58, y + 28);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawWhiskers(ctx, p) {
+  ctx.save();
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(side * 78, 4 + i * 18);
+      ctx.lineTo(side * (142 + i * 12), -10 + i * 26);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawMuzzle(ctx, p, x, y, w, h) {
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFloppyEar(ctx, x, y, length, p, tilt) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(tilt);
+  const earLength = Math.abs(length);
+  ctx.fillStyle = p.shade;
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.ellipse(0, 70, 58, earLength / 2, 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRoundEar(ctx, x, y, radius, p) {
+  ctx.save();
+  ctx.fillStyle = p.fur;
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = p.light;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 0.52, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawRabbitEar(ctx, x, y, p, tilt) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(tilt);
+  ctx.fillStyle = p.fur;
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 48, 146, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = p.light;
+  ctx.beginPath();
+  ctx.ellipse(0, 12, 22, 100, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawWing(ctx, x, y, p, side) {
+  ctx.save();
+  ctx.fillStyle = p.shade;
+  ctx.strokeStyle = p.ink;
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.ellipse(x, y, 48, 104, side * 0.42, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFeatherCrest(ctx, p) {
+  for (let i = -1; i <= 1; i++) {
+    drawTriangle(ctx, i * 28, -186, i * 18 - 24, -286, i * 18 + 44, -196, p.accent, p.ink, 7);
+  }
+}
+
+function drawBeak(ctx, p, x, y) {
+  drawTriangle(ctx, x - 42, y, x + 42, y, x, y + 54, "#ffb72b", p.ink, 8);
+}
+
+function drawCheeks(ctx, p, lx, ly, rx, ry) {
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = p.cheek;
+  ctx.beginPath();
+  ctx.ellipse(lx, ly, 42, 20, -0.16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(rx, ry, 42, 20, 0.16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawTriangle(ctx, x1, y1, x2, y2, x3, y3, fill, stroke, lineWidth) {
+  ctx.save();
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.lineTo(x3, y3);
+  ctx.closePath();
+  ctx.fill();
+  if (lineWidth) ctx.stroke();
+  ctx.restore();
+}
+
+function drawMascotShine(ctx, size) {
+  const shine = ctx.createLinearGradient(0, 0, size, size);
+  shine.addColorStop(0, "rgba(255,255,255,0.22)");
+  shine.addColorStop(0.24, "rgba(255,255,255,0)");
+  shine.addColorStop(0.72, "rgba(255,255,255,0)");
+  shine.addColorStop(1, "rgba(255,255,255,0.14)");
+  ctx.fillStyle = shine;
+  ctx.fillRect(0, 0, size, size);
+}
+
+function drawMbtiElementBadge(ctx, x, y, size, analysis) {
+  const element = MBTI_ELEMENTS[analysis.type] || MBTI_ELEMENTS.ENFP;
+  ctx.save();
+  ctx.shadowColor = element.color;
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.strokeStyle = POSTER_THEME.ink;
+  ctx.lineWidth = 7;
+  roundRect(ctx, x, y, size, size, 30);
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+  gradient.addColorStop(0, element.color);
+  gradient.addColorStop(1, "#111827");
+  ctx.fillStyle = gradient;
+  roundRect(ctx, x + 14, y + 14, size - 28, size - 28, 22);
+  ctx.fill();
+  drawMbtiIcon(ctx, element.symbol, x + size / 2, y + size / 2 - 8, size * 0.38, "#ffffff");
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.font = "900 26px system-ui, sans-serif";
+  ctx.fillText(analysis.type, x + size / 2, y + size - 27);
+  ctx.restore();
+}
+
+function drawMbtiIcon(ctx, symbol, cx, cy, r, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(6, r * 0.12);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (symbol === "shield" || symbol === "heartShield") {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r * 0.82, cy - r * 0.52);
+    ctx.lineTo(cx + r * 0.62, cy + r * 0.62);
+    ctx.lineTo(cx, cy + r);
+    ctx.lineTo(cx - r * 0.62, cy + r * 0.62);
+    ctx.lineTo(cx - r * 0.82, cy - r * 0.52);
+    ctx.closePath();
+    ctx.stroke();
+    if (symbol === "heartShield") drawHeart(ctx, cx, cy + r * 0.08, r * 0.42);
+  } else if (symbol === "moon") {
+    ctx.beginPath();
+    ctx.arc(cx - r * 0.1, cy, r * 0.84, 0.35 * Math.PI, 1.65 * Math.PI);
+    ctx.arc(cx + r * 0.34, cy, r * 0.62, 1.55 * Math.PI, 0.45 * Math.PI, true);
+    ctx.closePath();
+    ctx.fill();
+  } else if (symbol === "diamond") {
+    drawTriangle(ctx, cx, cy - r, cx + r, cy, cx, cy + r, color, color, 0);
+    drawTriangle(ctx, cx, cy - r, cx - r, cy, cx, cy + r, "rgba(255,255,255,0.72)", color, 0);
+  } else if (symbol === "gear" || symbol === "atom") {
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r, r * 0.38, (Math.PI / 3) * i, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.18, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (symbol === "flower") {
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath();
+      ctx.ellipse(cx + Math.cos(i) * r * 0.34, cy + Math.sin(i) * r * 0.34, r * 0.28, r * 0.5, i, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (symbol === "cloud") {
+    for (const [dx, dy, rr] of [[-0.42, 0.08, 0.42], [0, -0.18, 0.52], [0.45, 0.08, 0.38]]) {
+      ctx.beginPath();
+      ctx.arc(cx + dx * r, cy + dy * r, rr * r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (symbol === "bolt") {
+    ctx.beginPath();
+    ctx.moveTo(cx + r * 0.12, cy - r);
+    ctx.lineTo(cx - r * 0.62, cy + r * 0.08);
+    ctx.lineTo(cx, cy + r * 0.04);
+    ctx.lineTo(cx - r * 0.12, cy + r);
+    ctx.lineTo(cx + r * 0.66, cy - r * 0.14);
+    ctx.lineTo(cx + r * 0.08, cy - r * 0.08);
+    ctx.closePath();
+    ctx.fill();
+  } else if (symbol === "star" || symbol === "spark" || symbol === "sun") {
+    const points = symbol === "sun" ? 16 : 10;
+    ctx.beginPath();
+    for (let i = 0; i < points; i++) {
+      const rr = i % 2 ? r * 0.42 : r;
+      const a = -Math.PI / 2 + (Math.PI * 2 * i) / points;
+      ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fill();
+  } else if (symbol === "crown") {
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy + r * 0.48);
+    ctx.lineTo(cx - r * 0.72, cy - r * 0.42);
+    ctx.lineTo(cx - r * 0.18, cy + r * 0.06);
+    ctx.lineTo(cx, cy - r * 0.72);
+    ctx.lineTo(cx + r * 0.18, cy + r * 0.06);
+    ctx.lineTo(cx + r * 0.72, cy - r * 0.42);
+    ctx.lineTo(cx + r, cy + r * 0.48);
+    ctx.closePath();
+    ctx.fill();
+  } else if (symbol === "hands") {
+    ctx.beginPath();
+    ctx.arc(cx - r * 0.34, cy, r * 0.34, 0, Math.PI * 2);
+    ctx.arc(cx + r * 0.34, cy, r * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.66, cy + r * 0.42);
+    ctx.lineTo(cx + r * 0.66, cy + r * 0.42);
+    ctx.stroke();
+  } else if (symbol === "flame") {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + r);
+    ctx.bezierCurveTo(cx - r, cy + r * 0.28, cx - r * 0.35, cy - r * 0.42, cx, cy - r);
+    ctx.bezierCurveTo(cx + r * 0.82, cy - r * 0.12, cx + r * 0.72, cy + r * 0.48, cx, cy + r);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy + r * 0.46);
+    ctx.lineTo(cx + r * 0.2, cy + r * 0.46);
+    ctx.lineTo(cx + r * 0.2, cy + r);
+    ctx.lineTo(cx + r, cy);
+    ctx.lineTo(cx + r * 0.2, cy - r);
+    ctx.lineTo(cx + r * 0.2, cy - r * 0.46);
+    ctx.lineTo(cx - r, cy - r * 0.46);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawHeart(ctx, cx, cy, r) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + r * 0.78);
+  ctx.bezierCurveTo(cx - r * 1.15, cy, cx - r * 0.72, cy - r * 0.78, cx, cy - r * 0.28);
+  ctx.bezierCurveTo(cx + r * 0.72, cy - r * 0.78, cx + r * 1.15, cy, cx, cy + r * 0.78);
+  ctx.fill();
+}
+
+function drawSpark(ctx, x, y, size) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + size * 0.28, y - size * 0.28);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x + size * 0.28, y + size * 0.28);
+  ctx.lineTo(x, y + size);
+  ctx.lineTo(x - size * 0.28, y + size * 0.28);
+  ctx.lineTo(x - size, y);
+  ctx.lineTo(x - size * 0.28, y - size * 0.28);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function cartoonizeSourceImage(image) {
@@ -902,21 +1488,24 @@ function hslToRgb(h, s, l) {
   ];
 }
 
+function hexToHsl(hex) {
+  const normalized = hex.replace("#", "");
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return rgbToHsl(r, g, b);
+}
+
+function rgbString(rgb) {
+  return `rgb(${rgb.map((value) => Math.round(clampTo(value, 0, 255))).join(", ")})`;
+}
+
 function loadImage(file) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = reject;
     image.src = URL.createObjectURL(file);
-  });
-}
-
-function loadDataUrlImage(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
   });
 }
 
