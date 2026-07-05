@@ -130,7 +130,9 @@ els.analyzeBtn.addEventListener("click", async () => {
       showRejected(analysis);
       return;
     }
-    await renderResult(image, analysis);
+    els.analyzeBtn.textContent = "生成动漫形象中";
+    const animeImage = await generateAiAnimePetImage(image, analysis);
+    await renderResult(image, analysis, animeImage);
   } finally {
     els.analyzeBtn.disabled = false;
     els.analyzeBtn.textContent = "开始识别";
@@ -406,7 +408,7 @@ function mapMbti(metrics, petClass) {
   };
 }
 
-async function renderResult(image, analysis) {
+async function renderResult(image, analysis, animeImage = null) {
   lastImage = image;
   lastAnalysis = analysis;
   els.emptyState.hidden = true;
@@ -423,10 +425,10 @@ async function renderResult(image, analysis) {
     })
     .join("");
   els.mbtiCopy.textContent = analysis.copy;
-  await drawPoster(image, analysis);
+  await drawPoster(image, analysis, animeImage);
 }
 
-async function drawPoster(image, analysis) {
+async function drawPoster(image, analysis, animeImage = null) {
   const canvas = els.posterCanvas;
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
@@ -442,7 +444,7 @@ async function drawPoster(image, analysis) {
 
   drawPattern(ctx, w, h, accent);
   drawPosterPanel(ctx, w, h, accent);
-  drawStylizedPet(ctx, w, image);
+  drawStylizedPet(ctx, w, image, animeImage);
   await drawPosterText(ctx, w, h, accent, analysis);
 }
 
@@ -459,8 +461,8 @@ function drawPosterPanel(ctx, w, h, accent) {
   ctx.restore();
 }
 
-function drawStylizedPet(ctx, w, image) {
-  const avatar = makePetAvatar(image);
+function drawStylizedPet(ctx, w, image, animeImage = null) {
+  const avatar = animeImage || makePetAvatar(image);
   ctx.save();
   const x = 138;
   const y = 98;
@@ -488,6 +490,42 @@ function makePetAvatar(image) {
   actx.drawImage(cartoon, 0, 0, 720, 720);
 
   return avatar;
+}
+
+async function generateAiAnimePetImage(image, analysis) {
+  try {
+    const response = await fetch("./api/anime-pet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: makeApiReferenceImage(image),
+        mbti: analysis.type,
+        name: analysis.name,
+      }),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    if (!payload.image) return null;
+    return await loadDataUrlImage(`data:image/png;base64,${payload.image}`);
+  } catch (error) {
+    console.warn("AI anime pet generation unavailable, using local fallback.", error);
+    return null;
+  }
+}
+
+function makeApiReferenceImage(image) {
+  const size = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const crop = coverCrop(image.naturalWidth, image.naturalHeight, size, size);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, size, size);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, size, size);
+  return canvas.toDataURL("image/png");
 }
 
 function cartoonizeSourceImage(image) {
@@ -870,6 +908,15 @@ function loadImage(file) {
     image.onload = () => resolve(image);
     image.onerror = reject;
     image.src = URL.createObjectURL(file);
+  });
+}
+
+function loadDataUrlImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
   });
 }
 
